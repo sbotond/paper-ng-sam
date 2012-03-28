@@ -1,0 +1,89 @@
+#!/usr/bin/env python
+
+#
+# Run NG-SAM simulations on random target sequences with varying structure.
+#
+
+import      sys
+sys.path.append('./lib/')
+import      argparse
+
+import      utils       as      u
+import      os
+import      itertools   as      it
+import      tempfile
+
+def parse_arguments():
+    """ Parse arguments """
+    parser = argparse.ArgumentParser(description='Simulate NG-SAM experiments on different target sequences.')
+    parser.add_argument('-m', metavar='min_tlen', type=int, default=None, help='Minimum target length.', required=True)
+    parser.add_argument('-M', metavar='max_tlen', type=int, default=None, help='Maximum target length.', required=True)
+    parser.add_argument('-X', metavar='params', type=str, default=None, help='Parameters passed to sim_exp.', required=True)
+    parser.add_argument('-R', metavar='rundir', type=str, default=None, help='Rundir.', required=True)
+    parser.add_argument('-u', metavar='unit_nr_range', type=str, default=None, help='Unit number range.', required=True)
+    parser.add_argument('-l', metavar='unit_len_range', type=str, default=None, help='Unit length range.', required=True)
+    parser.add_argument('-n', metavar='nr_reps', type=int, default=None, help='Number of replicates per target structure.', required=True)
+    parser.add_argument('-T', metavar='target_dir', type=str, default=None, help='Target dir.', required=True)
+    parser.add_argument('-o', metavar='outdir_dir', type=str, default=None, help='Out dir.', required=True)
+    parser.add_argument('-Q', metavar='lsf_cluster', type=str, default=None, help='LSF queue.', required=True)
+    args            = parser.parse_args()
+    return args
+
+args        = parse_arguments()
+L           = u.Log()
+
+fixed_args  = args.X.strip('"')
+rundir      = args.R
+
+# Parse unit number range:
+tmp         = args.u.split(':')
+if len(tmp) != 3:
+    L.fatal('Illegal unit number range!')
+unr_range   = [ int(tmp[0]), int(tmp[1]), int(tmp[2]) ]
+
+# Parse unit length range:
+tmp     = args.l.split(':')
+if len(tmp) != 3:
+    L.fatal('Illegal unit length range!')
+ulen_range   = [ int(tmp[0]), int(tmp[1]), int(tmp[2]) ]
+
+nr_reps      = args.n
+target_dir   = args.T
+outdir       = args.o
+lsf_cluster  = args.Q
+min_tlen     = args.m
+max_tlen     = args.M
+
+def get_target(ulen, unr, rep):
+    """ Get a target sequence with the specified structure. """
+    name    = "T_%s_%s_%s" % (ulen, unr, rep)
+    fname   = os.path.join(target_dir, name + ".fas")
+    seq     = u.gen_target(ulen, unr)
+    fh      = open(fname, 'w') 
+    fh.write(">%s\n%s\n" % (name, seq))
+    fh.flush()
+    fh.close()
+    return fname, name
+
+def launch_sim_exp(target, name):
+    """ Submit simulation to the LSF system. """
+    log = os.path.join(outdir, name + ".log")
+    cmd = '"RDIR=\`mktemp --tmpdir -d sim_exp.XXXXX\`;' 
+    cmd += 'bin/sim_exp %s -R \${RDIR} -f %s -o %s 2> %s;rm -fr \${RDIR}/"' % (fixed_args, target, outdir, log)
+    cmd = "bsub -o /dev/null -J %s -M 20000 -q %s " % (name, lsf_cluster) + cmd
+    if os.system(cmd) != 0:
+        L.fatal('Failed to submit job for %s!' % name)
+
+ulengths    = reversed( range(ulen_range[0], ulen_range[1]+1, ulen_range[2]) )
+unrs        = reversed( range(unr_range[0], unr_range[1]+1, unr_range[2]) )
+reps        = range(nr_reps)
+
+# Iterate over unit lengths, numbers and replicates.
+for ulen, unr, rep in it.product(ulengths, unrs, reps):
+    tlen    = ulen * unr
+    if tlen < min_tlen or tlen > max_tlen:
+        continue
+    target_fas, name  = get_target(ulen, unr, rep)
+    launch_sim_exp(target_fas, name)
+    #print ulen, unr, rep
+

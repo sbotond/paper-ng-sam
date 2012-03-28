@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+
+#
+# Run NG-SAM simulations on random target sequences with varying structure.
+#
+
+import      sys
+sys.path.append('./lib/')
+import      argparse
+
+import      utils       as      u
+import      os
+import      itertools   as      it
+import      tempfile
+
+def parse_arguments():
+    """ Parse arguments """
+    parser = argparse.ArgumentParser(description='Simulate NG-SAM experiments with a range of dilution factors.')
+    parser.add_argument('-m', metavar='min_tlen', type=int, default=None, help='Minimum target length.', required=True)
+    parser.add_argument('-M', metavar='max_tlen', type=int, default=None, help='Maximum target length.', required=True)
+    parser.add_argument('-X', metavar='params', type=str, default=None, help='Parameters passed to sim_exp.', required=True)
+    parser.add_argument('-R', metavar='rundir', type=str, default=None, help='Rundir.', required=True)
+    parser.add_argument('-d1', metavar='d1_range', type=str, default=None, help='Range for first dilution.', required=True)
+    parser.add_argument('-d2', metavar='d2_range', type=str, default=None, help='Range for second dilution.', required=True)
+    parser.add_argument('-n', metavar='nr_reps', type=int, default=None, help='Number of replicates.', required=True)
+    parser.add_argument('-t', metavar='target_seq', type=str, default=None, help='Target sequence.', required=True)
+    parser.add_argument('-o', metavar='outdir_dir', type=str, default=None, help='Out dir.', required=True)
+    parser.add_argument('-Q', metavar='lsf_cluster', type=str, default=None, help='LSF queue.', required=True)
+    args            = parser.parse_args()
+    return args
+
+args        = parse_arguments()
+L           = u.Log()
+
+fixed_args  = args.X.strip('"')
+rundir      = args.R
+
+# Parse d1 range
+tmp         = args.d1.split(':')
+if len(tmp) != 3:
+    L.fatal('Illegal d1 range!')
+d1_range   = [ int(tmp[0]), int(tmp[1]), int(tmp[2]) ]
+
+# Parse d2 range:
+tmp     = args.d2.split(':')
+if len(tmp) != 3:
+    L.fatal('Illegal d2 range!')
+d2_range   = [ int(tmp[0]), int(tmp[1]), int(tmp[2]) ]
+
+nr_reps      = args.n
+target       = args.t
+outdir       = args.o
+lsf_cluster  = args.Q
+min_tlen     = args.m
+max_tlen     = args.M
+
+def launch_dil_exp(target, d1, d2, rep):
+    """ Submit simulation to the LSF system. """
+    name    = "D_%s_%s_%s" % (d1, d2, rep)
+    log     = os.path.join(outdir, name + ".log")
+    cmd     = '"RDIR=\`mktemp --tmpdir -d sim_exp.XXXXX\`;' 
+    cmd     += 'bin/sim_exp %s -dm %d -dc %d -N %s -R \${RDIR} -f %s -o %s 2> %s;rm -fr \${RDIR}/"' % (fixed_args, d1, d2, name, target, outdir, log)
+    cmd     = "bsub -o /dev/null -J %s -M 20000 -q %s " % (name, lsf_cluster) + cmd
+    if os.system(cmd) != 0:
+        L.fatal('Failed to submit job for %s!' % name)
+
+d1s    = list( reversed( range(d1_range[0], d1_range[1]+1, d1_range[2]) ) )
+d2s    = list( reversed( range(d2_range[0], d2_range[1]+1, d2_range[2]) ) )
+reps   = range(nr_reps)
+
+# Iterate over unit lengths, numbers and replicates.
+for d1, d2, rep in it.product(d1s, d2s, reps):
+    launch_dil_exp(target, d1, d2, rep)
+    #print d1, d2, rep
+

@@ -1,0 +1,130 @@
+#!/usr/bin/env python
+
+#
+# Script calculating a branch length scaling factor in order to achive ~5% mutation rate for 10 cycles.
+#
+
+import      sys
+sys.path.append('./lib/')
+import      argparse
+
+import      sim_exp
+import      utils       as      u
+import      mutsim
+import      numpy       as      np
+
+def parse_arguments():
+    """ Parse arguments """
+    global VERBOSE_MODE
+    parser = argparse.ArgumentParser(description='Calibrate branch length scaling factor.')
+    parser.add_argument('-P', metavar='path', type=str, default=None, help='Bin path.',required=True)
+    parser.add_argument('-c', metavar='nr_cycles', type=int, default=None, help='Number of PCR cycles.', required=True)
+    parser.add_argument('-g', metavar='nr_sim', type=int, default=None, help='Number of simulated experiments.', required=True)
+    parser.add_argument('-q', metavar='mut_model', type=str, default=None, help='Mutation model file.', required=True)
+    parser.add_argument('-m', metavar='mut_target', type=float, default=None, help='Target mutation rate.', required=True)
+    parser.add_argument('-f', metavar='test_fasta', type=str, default=None, help='Fasta file with the test sequence.', required=True)
+    parser.add_argument('-o', metavar='out_file', type=str, default=None, help='Output file.', required=True)
+    parser.add_argument('-r', metavar='report_pdf', type=str, default=None, help='Report file.')
+    args            = parser.parse_args()
+    return args
+
+args    = parse_arguments()
+L       = u.Log()
+R       = u.Report(args.r)
+
+# Simulate mutagenic PCR experiments and calculate the mean 
+# non-zero branch length.
+
+def nonzero_bls(tree):
+    """ Get nonzero branch lengths """
+    nzbl    = []
+    for edge in tree.preorder_edge_iter():
+        if edge.length is None:
+            continue
+        if edge.length > 0:
+            nzbl.append( edge.length )
+    return nzbl
+
+nzbl = []
+for i in xrange(args.g):
+    sp      = sim_exp.SimPcrDil(
+                name            = 'calibration',
+                init_popsize    = 5000,
+                pcr_eff         = 0.75,
+                nr_cycles_mut   = 10,       
+                dilf_after_mut  = 10**20,   # Dummy parameter
+                nr_cycles_cln   = 10,       # Dummy parameter
+                dilf_after_cln  = 10**20,   # Dummy parameter
+                nr_cycles_cov   = 30,       # Dummy parameter
+                sample_size_mut = 10,
+                path            = args.P,
+                log             = L,
+                clean           = True,
+                mut_only        = True
+            )
+    sp_res = sp.simulate()
+    tree    = sp_res['tree']
+    nzbl.extend(nonzero_bls(tree))
+
+# Report non-zero branch lengths:
+R.plot_hist(nzbl, xlab="Branch length", ylab="Count",title="Distribution of non-zero branch lengths from calibration",bins=30)
+
+mean_nzbl   = np.mean(nzbl)
+
+# Read in target sequence (MH22):
+target_seq  = u.Fasta(args.f).slurp().values()[0]
+
+# Read in mutation model:
+ms          = mutsim.MutSim(args.q)
+
+#Calculate base composition vector for target sequence:
+base_freqs  = mutsim.calc_basefreq(target_seq)
+
+# Calculate the expected number of substitutions per unit time
+# as a function of the scaled Q matrix and the base composition
+# of the target sequence:
+
+K   = ms.calc_exp_subst(base_freqs)
+
+# Calculate branch length scaling factor:
+bl_scaler   = args.m /(K * mean_nzbl)
+
+# Write bl_scaler to calibration file:
+out_fh  = open(args.o,"w")
+out_fh.write("%f\n" % bl_scaler)
+
+# Read in mutation model, now with the branch length scaler added:
+ms  = mutsim.MutSim(args.q, bl_scaler=bl_scaler)
+
+# Test calibration on the MH22 sequence:
+hm_dists    = [ ]
+for i in xrange(args.g):
+    sp      = sim_exp.SimPcrDil(
+                name            = 'calibration',
+                init_popsize    = 5000,
+                pcr_eff         = 0.75,
+                nr_cycles_mut   = 10,       
+                dilf_after_mut  = 10**20,   # Dummy parameter
+                nr_cycles_cln   = 10,       # Dummy parameter
+                dilf_after_cln  = 10**20,   # Dummy parameter
+                nr_cycles_cov   = 30,       # Dummy parameter
+                sample_size_mut = 10,
+                path            = args.P,
+                log             = L,
+                clean           = True,
+                mut_only        = True
+            )
+    sp_res = sp.simulate()
+    tree    = sp_res['tree']
+    ms_res  = ms.sim(tree, target_seq)
+    tips    = ms.get_tips()
+    for s in tips.itervalues():
+        hm_dists.append(mutsim.hm_dist(target_seq,s))
+
+# Report distribution of hamming distances:
+R.plot_hist(hm_dists, xlab="Distance", ylab="Count",title="Distribution hamming distances: for mutated vs. original MH22",bins=30)
+
+# Write bl_scaler and mean mutation rate to calibration file:
+out_fh  = open(args.o,"w")
+out_fh.write("%f\n" % bl_scaler)
+out_fh.write("%f\n" % np.mean(hm_dists))

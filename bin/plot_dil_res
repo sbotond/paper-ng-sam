@@ -1,0 +1,179 @@
+#!/usr/bin/env python
+
+#
+# Plot the results of dil_sim.
+#
+
+import      sys
+sys.path.append('./lib/')
+import      argparse
+
+import      utils       as      u
+import      os
+import      itertools   as      it
+import      glob
+from        collections import  defaultdict
+import      numpy       as      np
+import      matplotlib
+from        matplotlib  import  pyplot      as      plt
+
+def parse_arguments():
+    """ Parse arguments """
+    parser = argparse.ArgumentParser(description='Plot the results of dil_sim.')
+    parser.add_argument('-i', metavar='input_dir', type=str, default=None, help='Input directory.', required=True)
+    parser.add_argument('-r', metavar='report_pdf', type=str, default=None, help='Report PDF.', required=True)
+    parser.add_argument('-g', metavar='grids', type=int, default=10, help='Number of x hexagons.')
+    parser.add_argument('-s', metavar='axis_scale', type=str, default='linear', help='Axis scaling.')
+    args            = parser.parse_args()
+    return args
+
+args        = parse_arguments()
+L           = u.Log()
+R           = u.Report(args.r)
+input_dir   = args.i
+grids       = args.g
+scale       = args.s
+
+def parse_results(sdir):
+    """ Parse raw results """
+    status  = defaultdict(list)
+    ident   = defaultdict(list) 
+    len_perc= defaultdict(list)
+    nr_types= defaultdict(list)
+
+    for fname in glob.iglob(os.path.join(sdir,"*.out")):
+        # Read in data:
+        tmp = file(fname).readlines()
+        if len(tmp) != 1:
+            L.fatal("Malformed result file: %s" % fname)
+        tmp = tmp[0].split()
+        # Parse name:
+        foo = tmp[0].split('_')
+        if len(foo) != 4:
+            L.fatal("Malformed target name: %s" % tmp[0])
+        id  = (int(foo[1]), int(foo[2]))
+
+        # Record status:
+        st  = 100.0
+        if int(tmp[1]) < 0:
+            st = 0.0
+        status[id].append(st)
+
+        # Record the number of mutant types:
+        nr_types[id].append(int(tmp[2]))
+
+        # Record percent length:
+        lp  = 0.0
+        if float(tmp[3]) > 0.0:
+            lp = float(tmp[4])/float(tmp[3]) * 100
+        len_perc[id].append(lp)
+
+        # Record percent identity:
+        ident[id].append(float(tmp[5]))
+
+    res = { 
+        'status':   status,
+        'len_perc': len_perc,
+        'ident':    ident,
+        'nr_types': nr_types,
+    }
+    return res
+
+def shape_res(res, red_fun, rz):
+    """ Tabulate raw result in numpy arrays """
+    dil1    = []
+    dil2     = []
+    stat    = []
+    for id, stats in res.iteritems():
+        # Remove failed elements:
+        if rz:
+            stats = [x for x in stats if x > 0]
+        if len(stats) > 0:
+            dil1.append(id[0])
+            dil2.append(id[1])
+            stat.append( red_fun(stats) )
+    return {'dil1': np.array(dil1,dtype=float), 'dil2': np.array(dil2,dtype=float), 'stat': np.array(stat,dtype=float)}
+
+def gen_cmap(cdict):
+    """ Generate color map from gradient dictionary """
+    my_cmap = matplotlib.colors.LinearSegmentedColormap('my_colormap',cdict,256) 
+    my_cmap = matplotlib.colors.LinearSegmentedColormap('my_colormap',cdict,256) 
+    return my_cmap
+
+def plot_res(raw_res, name, desc, grids=100, rz=True, cmap=None):
+    """ Plot results on a hexbin plot """
+    tmp_mean   =  shape_res(raw_res[name], np.mean, rz)
+    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
+
+#    tmp_median   =  shape_res(raw_res[name], np.median, rz)
+#    R.hexbin(x=tmp_median['dil1'], y=tmp_median['dil2'], z=tmp_median['stat'], xlab="First dilution", ylab="Sceond dilution", title="Median %s" % desc, f=np.median, grids=grids, xs=scale, ys=scale, cmap=cmap)
+
+def plot_perc_rec(raw_res, cmap=None, rz=True):
+    """ Plot the percent of correctly reconstructed bases """
+    desc    = "percent of correctly reconstructed bases"
+    ident_mean   =  shape_res(raw_res['ident'], np.mean, rz)
+    len_mean     =  shape_res(raw_res['len_perc'], np.mean, rz)
+    tmp_mean     =  ident_mean
+    tmp_mean['stat']   = ident_mean['stat'] * len_mean['stat'] / 100.0
+    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
+
+    
+
+
+
+cdict_greens = {'red': (
+                (0.0, 0.0, 0.0),
+                (1.0, 0.0, 0.0)
+                ),
+                'green': (
+                    (0.0, 0.2, 0.2),
+                    (1.0, 1.0, 1.0)
+                ),
+                'blue': (
+                    (0.0, 0.0, 0.0),
+                    (1.0, 0.0, 0.0)
+                )
+}
+
+cdict_green_red = {'red': (
+                (0.0, 1.0, 1.0),
+                (1.0, 0.0, 0.0)
+                ),
+                'green': (
+                    (0.0, 0.0, 0.0),
+                    (1.0, 1.0, 1.0)
+                ),
+                'blue': (
+                    (0.0, 0.2, 0.2),
+                    (1.0, 0.2, 0.2)
+                )
+}
+
+cdict_green_red_low = {'red': (
+                (0.0, 1.0, 1.0),
+                (0.3, 0.5, 0.5),
+                (1.0, 0.0, 0.0)
+                ),
+                'green': (
+                    (0.0, 0.0, 0.0),
+                    (0.3, 0.5, 0.55555),
+                    (1.0, 1.0, 1.0)
+                ),
+                'blue': (
+                    (0.0, 0.2, 0.2),
+                    (1.0, 0.2, 0.2)
+                )
+}
+
+
+green_red_low   = gen_cmap(cdict_green_red_low)
+greens      = gen_cmap(cdict_greens)
+green_red   = gen_cmap(cdict_green_red)
+
+raw_res = parse_results(input_dir)
+
+plot_perc_rec(raw_res, cmap=None)
+plot_res(raw_res, 'ident', 'percent identity',grids, cmap=greens)
+plot_res(raw_res, 'len_perc', 'percent length',grids, cmap=None)
+plot_res(raw_res, 'status', 'percent of successful simulations',grids, rz=False, cmap=None)
+

@@ -1,0 +1,166 @@
+#!/usr/bin/env python
+
+#
+# Simulate a single NG-SAM experiment with the specified target and parameters.
+#
+
+import      sys
+sys.path.append('./lib/')
+import      argparse
+
+import      sim_exp
+import      utils       as      u
+import      mutsim
+import      os
+import      simngs
+import      velvet
+import      exonerate
+import      muscle
+
+def parse_arguments():
+    """ Parse arguments """
+    parser = argparse.ArgumentParser(description='Simulate NG-SAM experiment.')
+    parser.add_argument('-f', metavar='target_seq', type=str, default=None, help='Target sequence in fasta format.', required=True)
+    parser.add_argument('-n', metavar='mut_model', type=str, default=None, help='Mutation model file.', required=True)
+    parser.add_argument('-b', metavar='bl_file', type=str, default=None, help='Branch length scaler file.', required=True)
+    parser.add_argument('-i', metavar='init_popsize', type=int, default=None, help='Initial molecule number.', required=True)
+    parser.add_argument('-e', metavar='pcr_eff', type=float, default=None, help='PCR efficiency.', required=True)
+    parser.add_argument('-cm', metavar='cycles_mut', type=int, default=None, help='Number of mutagenic cycles.', required=True)
+    parser.add_argument('-dm', metavar='df_mut', type=float, default=None, help='Dilution factor after mutation.', required=True)
+    parser.add_argument('-cc', metavar='cycles_clean', type=int, default=None, help='Number of cleanup cycles.', required=True)
+    parser.add_argument('-dc', metavar='df_clean', type=float, default=None, help='Dilution factor after cleanup PCR.', required=True)
+    parser.add_argument('-cf', metavar='cycles_final', type=int, default=None, help='Number of final cycles.', required=True)
+    parser.add_argument('-ss', metavar='sample_size', type=int, default=40, help='Mutation genealogy sample size.')
+    parser.add_argument('-vm', metavar='min_ctgl', type=int, default=None, help='Velvet: minimum contig length.', required=True)
+    parser.add_argument('-vk', metavar='kmer_length', type=int, default=None, help='Velvet: kmer_length.', required=True)
+    parser.add_argument('-vi', metavar='v_ins', type=int, default=None, help='Velvet: insert_size.', required=True)
+    parser.add_argument('-vd', metavar='v_max_div', type=float, default=None, help='Velvet: max_div.', required=True)
+    parser.add_argument('-o', metavar='out_dir', type=str, default=".", help='Output directory.')
+    parser.add_argument('-N', metavar='name', type=str, default=None, help='Overwrite target name.')
+    parser.add_argument('-P', metavar='bin_path', type=str, default=None, help='Path to pcr_coal.R.',required=True)
+    parser.add_argument('-R', metavar='run_path', type=str, default=None, help='Run path.', required=True)
+    parser.add_argument('-S', metavar='run_file', type=str, default=None, help='SimNGS runfile.', required=True)
+    parser.add_argument('-L', metavar='read_length', type=int, default=None, help='Read length.', required=True)
+    parser.add_argument('-I', metavar='insert_size', type=int, default=None, help='Mean insert size.', required=True)
+    parser.add_argument('-t', metavar='total_cov', type=int, default=None, help='Total coverage.')
+    args            = parser.parse_args()
+    return args
+
+args    = parse_arguments()
+L       = u.Log()
+
+ts          = u.parse_target_seq(args.f)
+if args.N != None:
+    ts['full_name'] = args.N
+exp_name    = ts['full_name']
+bl_scaler   = u.parse_bl_file(args.b)
+res_file    = os.path.join(args.o,ts['full_name'] + ".out")
+res         = u.Res(res_file, ts['full_name'])
+
+# Simulate PCR and dilution experiments:
+lab      = sim_exp.SimPcrDil(
+            name            = ts['full_name'],
+            init_popsize    = args.i,
+            pcr_eff         = args.e,
+            nr_cycles_mut   = args.cm,
+            dilf_after_mut  = args.dm,
+            nr_cycles_cln   = args.cc,
+            dilf_after_cln  = args.dc,
+            nr_cycles_cov   = args.cf,
+            total_cov       = args.t,
+            sample_size_mut = args.ss,
+            path            = args.P,
+            log             = L,
+            clean           = True,
+        )
+lab_res         = lab.simulate()
+mutant_types    = lab_res['cov']
+
+# Abort if we have no mutant types after simulating NG-SAM:
+if len(mutant_types) == 0:
+    res.save(status=-1)
+    sys.exit(0)
+
+# Simulate mutations:
+ms          = mutsim.MutSim("dat/mutation_model.tab", bl_scaler=bl_scaler)
+ms.sim(lab_res['tree'], ts['seq'])
+tips    = ms.get_tips()
+
+# Create run directory:
+rd      = u.Rtemp(args.R, L).subdir(exp_name)
+
+# Simulate sequencing of mutant types using simNGS:
+reads1  = rd.tempfile("end1.fq")
+reads2  = rd.tempfile("end2.fq")
+ngs = simngs.SimNGS(args.S, args.L, args.I, L, rd)
+for name, cov in mutant_types.items():
+        ngs.sim(name, tips[name], cov)
+
+# Assemble reads using velvet:
+v   = velvet.Velvet(fqs=[reads1, reads2], kmer_length=args.vk, min_ctgl=args.vm, ins_len=args.vi, max_div=args.vd, rts=rd, log=L)
+
+ret = v.velveth()
+# Abort if hashing failed:
+if ret is None:
+    res.save(status=-2)    
+    sys.exit(0)
+
+ret = v.velvetg()
+# Abort if assembly failed:
+if ret is None:
+    res.save(status=-3)    
+    sys.exit(0)
+
+contigs = v.parse_contigs()
+# Abort if no contigs are reported:
+if contigs is None:
+    res.save(status=-4)    
+    sys.exit(0)
+
+# Find the largest contig:
+max_len     = 0
+max_name    = None
+for name, seq in contigs.iteritems():
+   if len(seq) > max_len:
+        max_name    = name
+        max_len     = len(seq) 
+
+# Create Exonerate instance:
+exn = exonerate.Exonerate(L, rd)
+
+# Check strandedness and reverse complement to match the longest contig:
+for name, seq in contigs.iteritems():
+    if name == max_name: continue
+    s   = exn.check_strands(contigs[max_name], seq)
+    # Abort if strand check failed:
+    if s is None:
+        res.save(status=-5)
+        sys.exit(0)
+    if s:
+        contigs[name]   = u.revcomp(contigs[name])
+
+# Align contigs using muscle:
+#mus = muscle.Muscle(L, rd)
+mus = muscle.Muscle(L, rd)
+aln = mus.align_contigs(contigs)
+# Abort if multiple alignment failed:
+if aln is None:
+    res.save(status=-6)
+    sys.exit(0)
+
+# Calculate majority-rule consensus:
+consensus   = u.consensus(aln)
+
+sim     = exn.seq_cmp(ts['seq'], consensus)
+# Abort if realignment failed:
+if sim is None:
+    res.save(status=-7)
+    sys.exit(0)
+
+# And finally, save the results:    
+
+res.save(status=0, nmut=len(mutant_types) ,targ_len=len(ts['seq']), cons_len=sim['alignment_length'], seq_ident=sim['percent_identity'])
+
+# Clean up temporary files:
+rd.clean()
+
