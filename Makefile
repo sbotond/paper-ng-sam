@@ -20,10 +20,6 @@ CAL_SIM			= 5000	# Number of simulated calibration experiments.
 com:
 	git commit -a
 
-# Push to origin:
-push:
-	git push --all
-
 # Run a test simulation:
 t:
 	@bin/sim_exp -vm 300 -vk 80 -vi 400 -vd 0.1 -n $(MUT_MODEL_FILE) -b $(BL_SCALER_FILE) -f dat/dmel_eater.fas -i 5000 -e 0.75 -cm 15 -dm 4900 -cc 20 -dc 16000000 -cf 30 -P $(BIN) -R ./ -S $(SIMNGS_RUNFILE) -L $(READ_LENGTH) -I $(INSERT_SIZE) -t 4000
