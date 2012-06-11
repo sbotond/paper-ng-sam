@@ -224,16 +224,46 @@ class Report:
         self.pdf    = pdf
         self.pages  = PdfPages(pdf)
 
-    def hexbin(self, x, y, z,title="", xlab="", ylab="",f=np.mean, grids=100, xs='linear',ys='linear', cmap=None,tfs=11):
+    def hexbin(self, x, y, z,title="", xlab="", ylab="",f=np.mean, grids=100, xs='linear',ys='linear', cmap=None,tfs=11, point=None,cline=None):
         """ Simple hexbin plot """
         fig = plt.figure()
         plt.hexbin(x=x, y=y, C=z, reduce_C_function=f, gridsize=grids, xscale=xs, yscale=ys, cmap=cmap)
+        xv  = [ min(x), max(x) ]
+        yv  = [ min(y), max(y) ]
+        if point != None:
+            plt.plot(
+                point['x'],
+                point['y'],
+                color=point['color'],
+                marker=point['marker'],
+                ms=point['ms'],
+                hold=True,
+            ) 
+            xv.append(point['x'])
+            yv.append(point['y'])
+        if cline != None:
+           self.plot_cline(plt, cline, x, y) 
+        plt.xlim( (min(xv),max(xv)) )
+        plt.ylim( (min(yv), max(yv)) )
+        plt.colorbar()
         plt.xlabel(xlab, fontsize=tfs)
         plt.ylabel(ylab, fontsize=tfs)
         plt.title(title, fontsize=tfs)
-        plt.colorbar()
         self.pages.savefig(fig)
         plt.close(fig)
+
+    def plot_cline(self, plt, cline, x, y):
+        step = 0.125
+        x = np.arange(min(x), max(x),step,dtype=float)
+        y = np.arange(min(y), max(y),step,dtype=float)
+        xx = []
+        yy = []
+        for a in x:
+            for b in y:
+                if a * b == float(cline):
+                    xx.append(a)
+                    yy.append(b)
+        plt.plot(xx,yy,'--',lw=1,color='black')
 
     def plot_hash(self, h, title="", xlab="", ylab=""):
         """ Visualise hash as a bar plot """

@@ -34,6 +34,11 @@ input_dir   = args.i
 grids       = args.g
 scale       = args.s
 
+# Point marking the repetitive structure in the second simulated experiment:
+point={'x': 3813,'y': 3, 'marker': 'o', 'color': 'black', 'ms': 8}
+# Line through regions of length 10kb:
+cline=10000
+
 def parse_results(sdir):
     """ Parse raw results """
     status  = defaultdict(list)
@@ -103,7 +108,7 @@ def gen_cmap(cdict):
 def plot_res(raw_res, name, desc, grids=100, rz=True, cmap=None):
     """ Plot results on a hexbin plot """
     tmp_mean   =  shape_res(raw_res[name], np.mean, rz)
-    R.hexbin(x=tmp_mean['ulen'], y=tmp_mean['unr'], z=tmp_mean['stat'], xlab="Unit length", ylab="Unit number", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
+    R.hexbin(x=tmp_mean['ulen'], y=tmp_mean['unr'], z=tmp_mean['stat'], xlab="Unit length", ylab="Unit number", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap,point=point, cline=cline)
 
 #    tmp_median   =  shape_res(raw_res[name], np.median, rz)
 #    R.hexbin(x=tmp_median['ulen'], y=tmp_median['unr'], z=tmp_median['stat'], xlab="Unit length", ylab="Unit number", title="Median %s" % desc, f=np.median, grids=grids, xs=scale, ys=scale, cmap=cmap)
@@ -115,7 +120,7 @@ def plot_perc_rec(raw_res, cmap=None, rz=True):
     len_mean     =  shape_res(raw_res['len_perc'], np.mean, rz)
     tmp_mean     =  ident_mean
     tmp_mean['stat']   = ident_mean['stat'] * len_mean['stat'] / 100.0
-    R.hexbin(x=tmp_mean['ulen'], y=tmp_mean['unr'], z=tmp_mean['stat'], xlab="Unit length", ylab="Unit number", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
+    R.hexbin(x=tmp_mean['ulen'], y=tmp_mean['unr'], z=tmp_mean['stat'], xlab="Unit length", ylab="Unit number", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap, point=point, cline=cline)
 
 
 def plot_nr_types(res):
@@ -189,7 +194,7 @@ raw_res = parse_results(input_dir)
 plot_perc_rec(raw_res, cmap=greens)
 plot_res(raw_res, 'ident', 'percent identity',grids, cmap=greens)
 plot_res(raw_res, 'len_perc', 'percent length',grids, cmap=greens)
-plot_res(raw_res, 'status', 'percent of successful simulations',grids, rz=False, cmap=green_red)
+plot_res(raw_res, 'status', 'percent of successful simulations',grids, rz=False, cmap=None)
 
 plot_nr_types(raw_res)
 print_mean_sd(raw_res, 'nr_types')

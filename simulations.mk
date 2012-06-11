@@ -43,7 +43,7 @@ seq_sim:
 
 # Visualise the results of seq_sim:
 plot_seq_res:
-	@bin/plot_seq_res -i $(SEQ_OUT_DIR) -r $(REP_DIR)/seq_sim.pdf -g 25
+	@bin/plot_seq_res -i $(SEQ_OUT_DIR) -r $(REP_DIR)/seq_sim.pdf -g 27
 
 # dil_sim spacific parameters:
 DIL_OUT_DIR		=$(BASE)/dil_sim/out
@@ -63,5 +63,5 @@ dil_sim:
 
 # Visualise the results of dil_sim:
 plot_dil_res:
-	@bin/plot_dil_res -i $(DIL_OUT_DIR) -r $(REP_DIR)/dil_sim.pdf -g 12
+	@bin/plot_dil_res -i $(DIL_OUT_DIR) -r $(REP_DIR)/dil_sim.pdf -g 13
 

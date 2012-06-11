@@ -34,6 +34,9 @@ input_dir   = args.i
 grids       = args.g
 scale       = args.s
 
+# Point to mark the parameters of the first simulation setting:
+point={'x': 70000,'y': 16*10**6, 'marker': 'o', 'color': 'black', 'ms': 15}
+
 def parse_results(sdir):
     """ Parse raw results """
     status  = defaultdict(list)
@@ -103,23 +106,19 @@ def gen_cmap(cdict):
 def plot_res(raw_res, name, desc, grids=100, rz=True, cmap=None):
     """ Plot results on a hexbin plot """
     tmp_mean   =  shape_res(raw_res[name], np.mean, rz)
-    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
+    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap, point=point)
 
 #    tmp_median   =  shape_res(raw_res[name], np.median, rz)
 #    R.hexbin(x=tmp_median['dil1'], y=tmp_median['dil2'], z=tmp_median['stat'], xlab="First dilution", ylab="Sceond dilution", title="Median %s" % desc, f=np.median, grids=grids, xs=scale, ys=scale, cmap=cmap)
 
-def plot_perc_rec(raw_res, cmap=None, rz=True):
+def plot_perc_rec(raw_res, cmap=None, rz=True,grids=11):
     """ Plot the percent of correctly reconstructed bases """
     desc    = "percent of correctly reconstructed bases"
     ident_mean   =  shape_res(raw_res['ident'], np.mean, rz)
     len_mean     =  shape_res(raw_res['len_perc'], np.mean, rz)
     tmp_mean     =  ident_mean
     tmp_mean['stat']   = ident_mean['stat'] * len_mean['stat'] / 100.0
-    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap)
-
-    
-
-
+    R.hexbin(x=tmp_mean['dil1'], y=tmp_mean['dil2'], z=tmp_mean['stat'], xlab="First dilution", ylab="Second dilution", title="Mean %s" % desc, f=np.mean, grids=grids, xs=scale,ys=scale, cmap=cmap, point=point)
 
 cdict_greens = {'red': (
                 (0.0, 0.0, 0.0),
@@ -172,7 +171,7 @@ green_red   = gen_cmap(cdict_green_red)
 
 raw_res = parse_results(input_dir)
 
-plot_perc_rec(raw_res, cmap=None)
+plot_perc_rec(raw_res, cmap=None,grids=grids)
 plot_res(raw_res, 'ident', 'percent identity',grids, cmap=greens)
 plot_res(raw_res, 'len_perc', 'percent length',grids, cmap=None)
 plot_res(raw_res, 'status', 'percent of successful simulations',grids, rz=False, cmap=None)
