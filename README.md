@@ -1,8 +1,8 @@
 # Pipeline for simulating NG-SAM experiments
 
-This repository contains the simulation pipeline used in the manuscript:
+This repository contains the simulation pipeline used in the paper:
 
-Botond Sipos, Tim Massingham, Adrian M. Stütz, Nick Goldman: *An improved protocol for sequencing of repetitive genomic regions and structural variations using mutagenesis and Next Generation Sequencing*
+Botond Sipos, Tim Massingham, Adrian M. Stütz, Nick Goldman (2012) *An improved protocol for sequencing of repetitive genomic regions and structural variations using mutagenesis and Next Generation Sequencing*. PLoS ONE 7(8):e43359 [doi:10.1371/journal.pone.0043359](http://dx.doi.org/10.1371/journal.pone.0043359).
 
 ## Files
 
